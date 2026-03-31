@@ -19,7 +19,8 @@ const userSchema = new mongoose.Schema({
 
   phoneNumber: {
     type: String,
-    required: true,
+        sparse: true,
+
     unique: true,
     match: [/^\+?[\d\s-]{10,}$/, 'Please fill a valid phone number']
   },
@@ -56,8 +57,8 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
-  isVerified:{
-    type:Boolean, default:false
+  isVerified: {
+    type: Boolean, default: false
 
   },
   contacts: [{

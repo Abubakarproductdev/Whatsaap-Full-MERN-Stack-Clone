@@ -1,7 +1,7 @@
 /**
  * Format phone number to E.164 format (prepends '+' if missing).
- * @param {string|number} phoneNumber - The raw phone number input.
- * @returns {string} - The formatted phone number.
+ * @param {string|number} phoneNumber
+ * @returns {string}
  */
 const formatPhoneNumber = (phoneNumber) => {
   const numStr = String(phoneNumber).trim();
@@ -13,7 +13,7 @@ const formatPhoneNumber = (phoneNumber) => {
 
 /**
  * Generate a random 6-digit OTP string.
- * @returns {string} - A 6-digit OTP code.
+ * @returns {string}
  */
 const generateOTP = () => {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -21,11 +21,10 @@ const generateOTP = () => {
 
 /**
  * Resolve and prepend a country code prefix to a phone number.
- * Accepts either 'suffix' or 'countryCode' as the prefix source.
- * @param {string|number} phoneNumber - The raw phone number.
- * @param {string} [suffix] - Optional country code (e.g., '91' or '+91').
- * @param {string} [countryCode] - Optional country code fallback.
- * @returns {string} - The fully formatted E.164 phone number.
+ * @param {string|number} phoneNumber
+ * @param {string} [suffix]
+ * @param {string} [countryCode]
+ * @returns {string}
  */
 const buildFullPhoneNumber = (phoneNumber, suffix, countryCode) => {
   let codePrefix = suffix || countryCode || '';
@@ -43,8 +42,19 @@ const buildFullPhoneNumber = (phoneNumber, suffix, countryCode) => {
   return formatPhoneNumber(phoneNumber);
 };
 
+/**
+ * Validate email format.
+ * @param {string} email
+ * @returns {boolean}
+ */
+const isValidEmail = (email) => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(String(email).trim());
+};
+
 module.exports = {
   formatPhoneNumber,
   generateOTP,
   buildFullPhoneNumber,
+  isValidEmail,
 };

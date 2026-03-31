@@ -1,47 +1,41 @@
 const User = require('../models/User');
 const otpService = require('../services/otp.service');
-const { generateOTP, buildFullPhoneNumber } = require('../utils/otpgeneration');
+const emailService = require('../services/email.service');
+const { generateOTP, buildFullPhoneNumber, isValidEmail } = require('../utils/otpgeneration');
 const generateWebToken = require('../utils/genrateWebtoken');
 
 const OTP_EXPIRY_DURATION = 10 * 60 * 1000; // 10 minutes
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year
 
-/**
- * Send an OTP to the given phone number.
- */
+// ================================
+// SEND OTP ENDPOINT
+// ================================
+
 exports.sendOtp = async (req, res) => {
-  const { phoneNumber: rawPhone, suffix, countryCode } = req.body;
+  const { email, phoneNumber: rawPhone, suffix, countryCode } = req.body;
 
-  if (!rawPhone) {
-    return res.status(400).json({ success: false, message: 'Phone number is required' });
+  const method = email ? 'email' : rawPhone ? 'phone' : null;
+  if (!method) {
+    return res.status(400).json({
+      success: false,
+      message: 'Either email OR phone number is required',
+    });
   }
-
-  const phoneNumber = buildFullPhoneNumber(rawPhone, suffix, countryCode);
 
   try {
     const otpCode = generateOTP();
+    const otpExpiry = Date.now() + OTP_EXPIRY_DURATION;
 
-    await otpService.sendOtp(phoneNumber, otpCode);
-
-    // DB Fallback: Store OTP only when NOT using Twilio's Verify Service
-    if (!process.env.TWILIO_SERVICE_SID) {
-      const otpData = {
-        phoneOtp: otpCode,
-        optExpiry: Date.now() + OTP_EXPIRY_DURATION,
-      };
-
-      let user = await User.findOne({ phoneNumber });
-
-      if (!user) {
-        user = new User({ phoneNumber, ...otpData });
-      } else {
-        Object.assign(user, otpData);
-      }
-
-      await user.save();
+    if (method === 'email') {
+      await handleEmailSend(email, otpCode, otpExpiry);
+    } else {
+      await handlePhoneSend(rawPhone, suffix, countryCode, otpCode, otpExpiry);
     }
 
-    return res.status(200).json({ success: true, message: 'OTP sent successfully' });
+    return res.status(200).json({
+      success: true,
+      message: `OTP sent to ${method} successfully`,
+    });
   } catch (error) {
     console.error('Error in sendOtp:', error);
     return res.status(500).json({
@@ -52,61 +46,38 @@ exports.sendOtp = async (req, res) => {
   }
 };
 
-/**
- * Verify the OTP sent to the phone number.
- */
-exports.verifyOtp = async (req, res) => {
-  const { phoneNumber: rawPhone, code, suffix, countryCode } = req.body;
+// ================================
+// VERIFY OTP ENDPOINT
+// ================================
 
-  if (!rawPhone || !code) {
+exports.verifyOtp = async (req, res) => {
+  const { email, phoneNumber: rawPhone, code, suffix, countryCode } = req.body;
+
+  if (!code) {
+    return res.status(400).json({ success: false, message: 'OTP code is required' });
+  }
+
+  const method = email ? 'email' : rawPhone ? 'phone' : null;
+  if (!method) {
     return res.status(400).json({
       success: false,
-      message: 'Phone number and code are required',
+      message: 'Either email OR phone number is required',
     });
   }
 
-  const phoneNumber = buildFullPhoneNumber(rawPhone, suffix, countryCode);
-
   try {
-    let isVerified = false;
+    const user = await verifyByMethod(method, method === 'email' ? email : {
+      rawPhone,
+      suffix,
+      countryCode,
+    }, code);
 
-    const twilioStatus = await otpService.verifyOtpTwilioService(phoneNumber, code);
-
-    if (twilioStatus !== null) {
-      isVerified = twilioStatus;
-    } else {
-      const user = await User.findOne({ phoneNumber });
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'No OTP generated for this phone number',
-        });
-      }
-
-      if (user.phoneOtp === String(code) && user.optExpiry > Date.now()) {
-        isVerified = true;
-      }
-    }
-
-    if (!isVerified) {
+    if (!user) {
       return res.status(400).json({ success: false, message: 'Invalid or expired OTP' });
     }
 
-    let user = await User.findOne({ phoneNumber });
+    await completeVerification(user);
 
-    if (!user) {
-      user = new User({
-        phoneNumber,
-        username: 'user_' + generateOTP(),
-      });
-      await user.save();
-    } else if (user.phoneOtp) {
-      user.phoneOtp = '';
-      await user.save();
-    }
-
-    // Generate JWT and set it as an HTTP-only cookie
     const token = generateWebToken(user._id);
     res.cookie('token', token, {
       httpOnly: true,
@@ -115,13 +86,13 @@ exports.verifyOtp = async (req, res) => {
       maxAge: COOKIE_MAX_AGE,
     });
 
-    // Send response AFTER setting the cookie
     return res.status(200).json({
       success: true,
-      message: 'Phone number verified successfully',
+      message: `${method} verified successfully`,
       user: {
         id: user._id,
-        phoneNumber: user.phoneNumber,
+        email: user.email || null,
+        phoneNumber: user.phoneNumber || null,
         username: user.username,
         isVerified: true,
       },
@@ -135,3 +106,120 @@ exports.verifyOtp = async (req, res) => {
     });
   }
 };
+
+// ================================
+// HELPER FUNCTIONS
+// ================================
+
+async function handleEmailSend(email, otpCode, otpExpiry) {
+  if (!isValidEmail(email)) {
+    throw new Error('Invalid email format');
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  await emailService.sendOtpEmail(normalizedEmail, otpCode);
+
+  let user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) {
+    user = new User({
+      email: normalizedEmail,
+      EmailOtp: otpCode,       // ✅ Matches your model
+      optExpiry: otpExpiry,     // ✅ Matches your model
+    });
+  } else {
+    user.EmailOtp = otpCode;   // ✅ Matches your model
+    user.optExpiry = otpExpiry; // ✅ Matches your model
+  }
+
+  await user.save();
+}
+
+async function handlePhoneSend(rawPhone, suffix, countryCode, otpCode, otpExpiry) {
+  const phoneNumber = buildFullPhoneNumber(rawPhone, suffix, countryCode);
+
+  await otpService.sendOtp(phoneNumber, otpCode);
+
+  if (!process.env.TWILIO_SERVICE_SID) {
+    let user = await User.findOne({ phoneNumber });
+
+    if (!user) {
+      user = new User({
+        phoneNumber,
+        phoneOtp: otpCode,       // ✅ Matches your model
+        optExpiry: otpExpiry,     // ✅ Matches your model
+      });
+    } else {
+      user.phoneOtp = otpCode;   // ✅ Matches your model
+      user.optExpiry = otpExpiry; // ✅ Matches your model
+    }
+
+    await user.save();
+  }
+}
+
+async function verifyByMethod(method, identifier, code) {
+  let user = null;
+
+  if (method === 'email') {
+    if (!isValidEmail(identifier)) {
+      throw new Error('Invalid email format');
+    }
+
+    const normalizedEmail = identifier.trim().toLowerCase();
+    user = await User.findOne({ email: normalizedEmail });
+
+    if (!user) {
+      throw new Error('No OTP generated for this email');
+    }
+
+    // ✅ Check EmailOtp and optExpiry (matching your model)
+    if (user.EmailOtp !== String(code) || user.optExpiry <= Date.now()) {
+      return null;
+    }
+
+  } else {
+    const phoneNumber = buildFullPhoneNumber(
+      identifier.rawPhone,
+      identifier.suffix,
+      identifier.countryCode
+    );
+
+    const twilioStatus = await otpService.verifyOtpTwilioService(phoneNumber, code);
+
+    if (twilioStatus !== null) {
+      user = await User.findOne({ phoneNumber });
+      if (!user) {
+        user = new User({ phoneNumber });
+      }
+      return user;
+    }
+
+    user = await User.findOne({ phoneNumber });
+    if (!user) {
+      throw new Error('No OTP generated for this phone number');
+    }
+
+    // ✅ Check phoneOtp and optExpiry (matching your model)
+    if (user.phoneOtp !== String(code) || user.optExpiry <= Date.now()) {
+      return null;
+    }
+  }
+
+  return user;
+}
+
+async function completeVerification(user) {
+  // ✅ Clear the correct OTP fields
+  user.EmailOtp = '';
+  user.phoneOtp = '';
+  user.isVerified = true;
+
+  if (!user.username) {
+    user.username = 'user_' + generateOTP();
+  }
+
+  await user.save();
+  return user;
+}
