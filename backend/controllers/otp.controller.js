@@ -125,12 +125,12 @@ async function handleEmailSend(email, otpCode, otpExpiry) {
   if (!user) {
     user = new User({
       email: normalizedEmail,
-      EmailOtp: otpCode,       // ✅ Matches your model
-      optExpiry: otpExpiry,     // ✅ Matches your model
+      EmailOtp: otpCode,       
+      optExpiry: otpExpiry,    
     });
   } else {
-    user.EmailOtp = otpCode;   // ✅ Matches your model
-    user.optExpiry = otpExpiry; // ✅ Matches your model
+    user.EmailOtp = otpCode;   
+    user.optExpiry = otpExpiry; 
   }
 
   await user.save();
@@ -147,12 +147,12 @@ async function handlePhoneSend(rawPhone, suffix, countryCode, otpCode, otpExpiry
     if (!user) {
       user = new User({
         phoneNumber,
-        phoneOtp: otpCode,       // ✅ Matches your model
-        optExpiry: otpExpiry,     // ✅ Matches your model
+        phoneOtp: otpCode,      
+        optExpiry: otpExpiry,     
       });
     } else {
-      user.phoneOtp = otpCode;   // ✅ Matches your model
-      user.optExpiry = otpExpiry; // ✅ Matches your model
+      user.phoneOtp = otpCode;   
+      user.optExpiry = otpExpiry; 
     }
 
     await user.save();
