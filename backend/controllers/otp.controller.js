@@ -7,6 +7,22 @@ const generateWebToken = require('../utils/genrateWebtoken');
 const OTP_EXPIRY_DURATION = 10 * 60 * 1000; // 10 minutes
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year
 
+function getCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: COOKIE_MAX_AGE,
+    path: '/',
+  };
+}
+
+function setAuthCookies(res, token) {
+  const cookieOptions = getCookieOptions();
+  res.cookie('auth_token', token, cookieOptions);
+  res.cookie('token', token, cookieOptions);
+}
+
 // ================================
 // SEND OTP ENDPOINT
 // ================================
@@ -79,12 +95,7 @@ exports.verifyOtp = async (req, res) => {
     await completeVerification(user);
 
     const token = generateWebToken(user._id);
-    res.cookie('token', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: COOKIE_MAX_AGE,
-    });
+    setAuthCookies(res, token);
 
     return res.status(200).json({
       success: true,

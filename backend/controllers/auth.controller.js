@@ -1,5 +1,20 @@
 const User = require('../models/User');
 const { cloudinary, uploadToCloudinary } = require('../config/cloudinaryConfig');
+const Conversation = require('../models/Conversation');
+
+function getCookieOptions() {
+  return {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    path: '/',
+  };
+}
+
+
+
+
+
 
 // ================================
 // UPDATE PROFILE
@@ -34,6 +49,11 @@ exports.updateProfile = async (req, res) => {
         isUpdated = true;
       }
     }
+
+
+
+
+
 
     // ---- Update About (if provided) ----
     if (about !== undefined && about.trim() !== user.about) {
@@ -78,8 +98,12 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
+
+
+
+
 // ================================
-// GET PROFILE
+// GET OUR PROFILE
 // ================================
 
 exports.getProfile = async (req, res) => {
@@ -98,17 +122,79 @@ exports.getProfile = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+// ================================
+// GET ALL USERS CONVERSATION WITH LAST MESSAGE
+// ================================
+exports.getAllUsers = async (req, res) => {
+  const loggedInUser = req.user._id;
+
+  try {
+    // Get all users except the logged-in user
+    const users = await User.find({ _id: { $ne: loggedInUser } })
+      .select('username profilePicture lastSeen isOnline about phoneNumber')
+      .lean();
+
+    // For each user, find their conversation with the logged-in user
+    const usersWithConversation = await Promise.all(
+      users.map(async (user) => {
+        const conversation = await Conversation.findOne({
+          participants: { $all: [loggedInUser, user._id] },
+        })
+          .populate({
+            path: 'lastMessage',
+            select: 'content contentType sender receiver messageStatus createdAt',
+          })
+          .lean();
+
+        return {
+          ...user,
+          conversation: conversation
+            ? {
+                conversationId: conversation._id,
+                lastMessage: conversation.lastMessage || null,
+                unreadCount: conversation.unreadCount,
+                updatedAt: conversation.updatedAt,
+              }
+            : null,
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: 'Users retrieved successfully',
+      users: usersWithConversation,
+    });
+  } catch (error) {
+    console.error('Error in getAllUsers:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get users',
+      error: error.message,
+    });
+  }
+};
+
+
+
+
+
+
 // ================================
 // LOGOUT
 // ================================
 
 exports.logout = async (req, res) => {
   try {
-    res.clearCookie('token', {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-    });
+    const cookieOptions = getCookieOptions();
+    res.clearCookie('auth_token', cookieOptions);
+    res.clearCookie('token', cookieOptions);
 
     return res.status(200).json({
       success: true,
@@ -123,6 +209,11 @@ exports.logout = async (req, res) => {
     });
   }
 };
+
+
+
+
+
 
 // ================================
 // HELPER FUNCTIONS
@@ -142,6 +233,10 @@ function formatUserResponse(user) {
     lastSeen: user.lastSeen,
   };
 }
+
+
+
+
 
 async function deleteOldImage(imageUrl) {
   try {

@@ -4,7 +4,7 @@ const User = require('../models/User');
 const authMiddleware = async (req, res, next) => {
   try {
     // Get token from cookie
-    const token = req.cookies.token;
+    const token = req.cookies.auth_token || req.cookies.token;
 
     if (!token) {
       return res.status(401).json({
@@ -15,9 +15,17 @@ const authMiddleware = async (req, res, next) => {
 
     // Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const userId = decoded.id || decoded.userId;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token payload. Please login again.',
+      });
+    }
 
     // Find user and attach to request
-    const user = await User.findById(decoded.id).select('-EmailOtp -phoneOtp -optExpiry');
+    const user = await User.findById(userId).select('-EmailOtp -phoneOtp -optExpiry');
 
     if (!user) {
       return res.status(401).json({

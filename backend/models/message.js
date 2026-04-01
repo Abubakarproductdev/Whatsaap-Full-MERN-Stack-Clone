@@ -1,4 +1,4 @@
-import moongoose from 'mongoose';
+const mongoose = require('mongoose');   // ❌ You had "import moongoose" (typo + wrong syntax)
 
 const MessageSchema = new mongoose.Schema({
     conversationId:{

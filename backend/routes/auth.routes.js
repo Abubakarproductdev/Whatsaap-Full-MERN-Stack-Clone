@@ -18,5 +18,6 @@ router.post('/verify-otp', otpController.verifyOtp);
 router.get('/profile', authMiddleware, authController.getProfile);
 router.put('/update-profile', authMiddleware, upload.single('profilePicture'), authController.updateProfile);
 router.post('/logout', authMiddleware, authController.logout);
+router.get('/all-users', authMiddleware, authController.getAllUsers);
 
 module.exports = router;

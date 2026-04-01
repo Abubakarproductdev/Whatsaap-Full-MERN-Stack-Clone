@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');   // ❌ You had "import moongoose" (typo + wrong syntax)
 
 const ConversationSchema = new mongoose.Schema({
 
@@ -8,7 +8,7 @@ const ConversationSchema = new mongoose.Schema({
     }],
     lastmessage:{
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
+        ref: 'Message'
     },
     unreadCount:{
         type: Number,
