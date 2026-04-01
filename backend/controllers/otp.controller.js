@@ -20,7 +20,6 @@ function getCookieOptions() {
 function setAuthCookies(res, token) {
   const cookieOptions = getCookieOptions();
   res.cookie('auth_token', token, cookieOptions);
-  res.cookie('token', token, cookieOptions);
 }
 
 // ================================

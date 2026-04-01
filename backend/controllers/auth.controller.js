@@ -194,7 +194,6 @@ exports.logout = async (req, res) => {
   try {
     const cookieOptions = getCookieOptions();
     res.clearCookie('auth_token', cookieOptions);
-    res.clearCookie('token', cookieOptions);
 
     return res.status(200).json({
       success: true,
