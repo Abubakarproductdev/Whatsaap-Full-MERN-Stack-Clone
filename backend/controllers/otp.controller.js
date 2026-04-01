@@ -120,20 +120,23 @@ async function handleEmailSend(email, otpCode, otpExpiry) {
 
   await emailService.sendOtpEmail(normalizedEmail, otpCode);
 
-  let user = await User.findOne({ email: normalizedEmail });
-
-  if (!user) {
-    user = new User({
-      email: normalizedEmail,
-      EmailOtp: otpCode,       
-      optExpiry: otpExpiry,    
-    });
-  } else {
-    user.EmailOtp = otpCode;   
-    user.optExpiry = otpExpiry; 
-  }
-
-  await user.save();
+  await User.findOneAndUpdate(
+    { email: normalizedEmail },
+    {
+      $set: {
+        EmailOtp: otpCode,
+        optExpiry: otpExpiry,
+      },
+      $setOnInsert: {
+        email: normalizedEmail,
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+      runValidators: true,
+    }
+  );
 }
 
 async function handlePhoneSend(rawPhone, suffix, countryCode, otpCode, otpExpiry) {
@@ -142,20 +145,23 @@ async function handlePhoneSend(rawPhone, suffix, countryCode, otpCode, otpExpiry
   await otpService.sendOtp(phoneNumber, otpCode);
 
   if (!process.env.TWILIO_SERVICE_SID) {
-    let user = await User.findOne({ phoneNumber });
-
-    if (!user) {
-      user = new User({
-        phoneNumber,
-        phoneOtp: otpCode,      
-        optExpiry: otpExpiry,     
-      });
-    } else {
-      user.phoneOtp = otpCode;   
-      user.optExpiry = otpExpiry; 
-    }
-
-    await user.save();
+    await User.findOneAndUpdate(
+      { phoneNumber },
+      {
+        $set: {
+          phoneOtp: otpCode,
+          optExpiry: otpExpiry,
+        },
+        $setOnInsert: {
+          phoneNumber,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        runValidators: true,
+      }
+    );
   }
 }
 
@@ -211,11 +217,11 @@ async function verifyByMethod(method, identifier, code) {
 }
 
 async function completeVerification(user) {
-  // ✅ Clear the correct OTP fields
   user.EmailOtp = '';
   user.phoneOtp = '';
   user.isVerified = true;
 
+  // No unique check needed — duplicates are allowed
   if (!user.username) {
     user.username = 'user_' + generateOTP();
   }

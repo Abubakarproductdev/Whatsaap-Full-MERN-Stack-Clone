@@ -1,27 +1,38 @@
 const mongoose = require('mongoose');
+
+const normalizeOptionalString = (value) => {
+  if (value === null || value === undefined) {
+    return undefined;
+  }
+
+  const normalizedValue = String(value).trim();
+  return normalizedValue ? normalizedValue : undefined;
+};
+
+const normalizeOptionalEmail = (value) => {
+  const normalizedEmail = normalizeOptionalString(value);
+  return normalizedEmail ? normalizedEmail.toLowerCase() : undefined;
+};
+
 const userSchema = new mongoose.Schema({
   username: {
     type: String,
-    sparse: true,
-    unique: true,
     trim: true,
     minlength: 3,
     maxlength: 20
   },
   email: {
     type: String,
-    sparse: true,
-    unique: true,
     trim: true,
     lowercase: true,
+    set: normalizeOptionalEmail,
     match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Please fill a valid email address']
   },
 
   phoneNumber: {
     type: String,
-        sparse: true,
-
-    unique: true,
+    trim: true,
+    set: normalizeOptionalString,
     match: [/^\+?[\d\s-]{10,}$/, 'Please fill a valid phone number']
   },
   profilePicture: {
@@ -68,5 +79,21 @@ const userSchema = new mongoose.Schema({
 }, {
   timestamps: true
 });
+
+userSchema.index(
+  { email: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { email: { $exists: true } }
+  }
+);
+
+userSchema.index(
+  { phoneNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { phoneNumber: { $exists: true } }
+  }
+);
 
 module.exports = mongoose.model('User', userSchema);
