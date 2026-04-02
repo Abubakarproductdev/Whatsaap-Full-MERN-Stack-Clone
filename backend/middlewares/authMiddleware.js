@@ -4,7 +4,7 @@ const User = require('../models/User');
 const authMiddleware = async (req, res, next) => {
   try {
     // Get token from cookie
-    const token = req.cookies.auth_token || req.cookies.token;
+    const token = req.cookies.auth_token;
 
     if (!token) {
       return res.status(401).json({
