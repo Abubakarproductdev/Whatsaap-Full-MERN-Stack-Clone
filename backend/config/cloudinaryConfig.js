@@ -1,31 +1,28 @@
 const cloudinary = require('cloudinary').v2;
 const multer = require('multer');
 
-// Configure Cloudinary
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Multer — store file in memory as buffer
 const storage = multer.memoryStorage();
 
-// File filter — only allow images
+// Allow both images and videos
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith('image/')) {
+  if (file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')) {
     cb(null, true);
   } else {
-    cb(new Error('Only image files are allowed'), false);
+    cb(new Error('Only image and video files are allowed'), false);
   }
 };
 
-// Multer upload middleware
 const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB max
+    fileSize: 50 * 1024 * 1024, // 50MB max (videos can be larger)
   },
 });
 
@@ -40,10 +37,7 @@ const uploadToCloudinary = (fileBuffer, folder = 'profile_pictures') => {
     const stream = cloudinary.uploader.upload_stream(
       {
         folder,
-        allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-        transformation: [
-          { width: 500, height: 500, crop: 'fill', gravity: 'face' },
-        ],
+        resource_type: 'auto', // Auto-detect image or video
       },
       (error, result) => {
         if (error) reject(error);
