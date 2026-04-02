@@ -26,5 +26,7 @@ router.get('/all-users', authMiddleware, authController.getAllUsers);
 router.post('/send-message', authMiddleware, upload.single('file'), chatController.sendMessage);
 router.get('/messages/:conversationId', authMiddleware, chatController.getMessages);
 router.put('/mark-read/:conversationId', authMiddleware, chatController.markAsRead);
+router.delete('/conversation/:conversationId', authMiddleware, chatController.deleteConversation);
+router.delete('/message/:messageId', authMiddleware, chatController.deleteMessage);
 
 module.exports = router;

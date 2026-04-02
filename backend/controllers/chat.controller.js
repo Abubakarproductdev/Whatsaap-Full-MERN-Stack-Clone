@@ -209,9 +209,141 @@ exports.markAsRead = async (req, res) => {
     });
   }
 };
+
 // ================================
-// HELPER FUNCTIONS
+// DELETE CONVERSATION
 // ================================
+
+/**
+ * Delete a conversation and all its messages.
+ * Requires authentication.
+ */
+exports.deleteConversation = async (req, res) => {
+  const userId = req.user._id;
+  const { conversationId } = req.params;
+
+  if (!conversationId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Conversation ID is required',
+    });
+  }
+
+  try {
+    // Verify user is part of this conversation
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: { $in: [userId] },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+      });
+    }
+
+    // Delete all messages in this conversation
+    await Message.deleteMany({ conversationId });
+
+    // Delete the conversation
+    await Conversation.findByIdAndDelete(conversationId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Conversation deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error in deleteConversation:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete conversation',
+      error: error.message,
+    });
+  }
+};
+
+// ================================
+// DELETE MESSAGE
+// ================================
+
+/**
+ * Delete a single message from a conversation.
+ * Only the sender can delete their message.
+ * Updates lastMessage in conversation if needed.
+ * Requires authentication.
+ */
+exports.deleteMessage = async (req, res) => {
+  const userId = req.user._id;
+  const { messageId } = req.params;
+
+  if (!messageId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Message ID is required',
+    });
+  }
+
+  try {
+    // Find the message
+    const message = await Message.findById(messageId);
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: 'Message not found',
+      });
+    }
+
+    // Only sender can delete their message
+    if (message.sender.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only delete your own messages',
+      });
+    }
+
+    const conversationId = message.conversationId;
+
+    // Delete the message
+    await Message.findByIdAndDelete(messageId);
+
+    // Update conversation's lastMessage
+    await updateLastMessage(conversationId);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Message deleted successfully',
+    });
+  } catch (error) {
+    console.error('Error in deleteMessage:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete message',
+      error: error.message,
+    });
+  }
+};
+
+// ================================
+// HELPER FUNCTIONs
+// ================================
+
+/**
+ * Update conversation's lastMessage after a message is deleted.
+ * Sets it to the most recent remaining message, or null if no messages left.
+ * @param {ObjectId} conversationId
+ */
+async function updateLastMessage(conversationId) {
+  // Find the most recent remaining message
+  const lastMessage = await Message.findOne({ conversationId })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  await Conversation.findByIdAndUpdate(conversationId, {
+    lastMessage: lastMessage ? lastMessage._id : null,
+  });
+}
 
 /**
  * Process message content — handle file upload or text.
