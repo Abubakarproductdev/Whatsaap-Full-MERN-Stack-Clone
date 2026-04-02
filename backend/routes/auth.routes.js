@@ -22,9 +22,9 @@ router.post('/logout', authMiddleware, authController.logout);
 router.get('/all-users', authMiddleware, authController.getAllUsers);
 
 
-
+//Chat routes
 router.post('/send-message', authMiddleware, upload.single('file'), chatController.sendMessage);
 router.get('/messages/:conversationId', authMiddleware, chatController.getMessages);
-
+router.put('/mark-read/:conversationId', authMiddleware, chatController.markAsRead);
 
 module.exports = router;

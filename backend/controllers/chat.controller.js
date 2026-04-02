@@ -151,7 +151,64 @@ exports.getMessages = async (req, res) => {
     });
   }
 };
+ // ================================
+ // Mark all messages in a conversation as read.
+ // Requires authentication.
+ // ================================
+exports.markAsRead = async (req, res) => {
+  const userId = req.user._id;
+  const { conversationId } = req.params;
 
+  if (!conversationId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Conversation ID is required',
+    });
+  }
+
+  try {
+    // Verify user is part of this conversation
+    const conversation = await Conversation.findOne({
+      _id: conversationId,
+      participants: { $in: [userId] },
+    });
+
+    if (!conversation) {
+      return res.status(404).json({
+        success: false,
+        message: 'Conversation not found',
+      });
+    }
+
+    // Mark all unread messages sent TO this user as "read"
+    await Message.updateMany(
+      {
+        conversationId,
+        receiver: userId,
+        messageStatus: { $ne: 'read' },
+      },
+      {
+        $set: { messageStatus: 'read' },
+      }
+    );
+
+    // Reset unread count
+    conversation.unreadCount = 0;
+    await conversation.save();
+
+    return res.status(200).json({
+      success: true,
+      message: 'Messages marked as read',
+    });
+  } catch (error) {
+    console.error('Error in markAsRead:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to mark messages as read',
+      error: error.message,
+    });
+  }
+};
 // ================================
 // HELPER FUNCTIONS
 // ================================
