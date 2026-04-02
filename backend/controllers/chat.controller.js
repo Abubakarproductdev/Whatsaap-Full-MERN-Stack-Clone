@@ -1,7 +1,7 @@
 const Conversation = require('../models/Conversation');
 const Message = require('../models/message');
 const { uploadToCloudinary } = require('../config/cloudinaryConfig');
-
+const User = require('../models/User');
 // ================================
 // SEND MESSAGE
 // ================================
@@ -13,16 +13,27 @@ const { uploadToCloudinary } = require('../config/cloudinaryConfig');
  */
 exports.sendMessage = async (req, res) => {
   const senderId = req.user._id;
-  const { receiverId, content } = req.body;
   const file = req.file;
+const { receiverEmail, receiverPhone, content } = req.body;
 
-  if (!receiverId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Receiver ID is required',
-    });
-  }
+if (!receiverEmail && !receiverPhone) {
+  return res.status(400).json({
+    success: false,
+    message: 'Receiver email or phone number is required',
+  });
+}
 
+// Find receiver by email or phone
+const receiver = await findReceiver(receiverEmail, receiverPhone);
+
+if (!receiver) {
+  return res.status(404).json({
+    success: false,
+    message: 'Receiver not found',
+  });
+}
+
+const receiverId = receiver._id;
   if (senderId.toString() === receiverId) {
     return res.status(400).json({
       success: false,
@@ -216,4 +227,22 @@ async function findOrCreateConversation(senderId, receiverId) {
   }
 
   return conversation;
+}
+
+/**
+ * Find receiver user by email or phone number.
+ * @param {string} email
+ * @param {string} phone
+ * @returns {Document|null}
+ */
+async function findReceiver(email, phone) {
+  if (email) {
+    return await User.findOne({ email: email.trim().toLowerCase() });
+  }
+
+  if (phone) {
+    return await User.findOne({ phoneNumber: phone.trim() });
+  }
+
+  return null;
 }
