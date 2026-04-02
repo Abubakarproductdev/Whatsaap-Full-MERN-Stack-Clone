@@ -20,11 +20,7 @@ function getCookieOptions() {
 // UPDATE PROFILE
 // ================================
 
-/**
- * Update user profile — only updates fields that are provided.
- * Accepts: username, about (in body), profilePicture (as file upload).
- * Requires authentication.
- */
+
 exports.updateProfile = async (req, res) => {
   const { username, about } = req.body;
 

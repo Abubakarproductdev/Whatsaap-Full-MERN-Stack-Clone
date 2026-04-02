@@ -1,17 +1,11 @@
 const express = require('express');
 require('dotenv').config();
 const connectDB = require('./config/dbconfig');
-const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const DEFAULT_ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:3000',
-  'http://127.0.0.1:3000'
-];
+
 
 const allowedOrigins = (
   process.env.CLIENT_URLS

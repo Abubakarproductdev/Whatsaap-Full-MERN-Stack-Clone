@@ -190,7 +190,7 @@ async function verifyByMethod(method, identifier, code) {
       throw new Error('No OTP generated for this email');
     }
 
-    // ✅ Check EmailOtp and optExpiry (matching your model)
+    //  Check EmailOtp and optExpiry (matching your model)
     if (user.EmailOtp !== String(code) || user.optExpiry <= Date.now()) {
       return null;
     }
@@ -217,7 +217,7 @@ async function verifyByMethod(method, identifier, code) {
       throw new Error('No OTP generated for this phone number');
     }
 
-    // ✅ Check phoneOtp and optExpiry (matching your model)
+    //  Check phoneOtp and optExpiry (matching your model)
     if (user.phoneOtp !== String(code) || user.optExpiry <= Date.now()) {
       return null;
     }
