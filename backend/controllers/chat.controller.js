@@ -2,56 +2,47 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/message');
 const { uploadToCloudinary } = require('../config/cloudinaryConfig');
 const User = require('../models/User');
+
 // ================================
 // SEND MESSAGE
 // ================================
 
-/**
- * Send a message — supports text, image, and video.
- * Creates a new conversation if one doesn't exist.
- * Requires authentication.
- */
 exports.sendMessage = async (req, res) => {
   const senderId = req.user._id;
   const file = req.file;
-const { receiverEmail, receiverPhone, content } = req.body;
+  const { receiverEmail, receiverPhone, content } = req.body;
 
-if (!receiverEmail && !receiverPhone) {
-  return res.status(400).json({
-    success: false,
-    message: 'Receiver email or phone number is required',
-  });
-}
-
-// Find receiver by email or phone
-const receiver = await findReceiver(receiverEmail, receiverPhone);
-
-if (!receiver) {
-  return res.status(404).json({
-    success: false,
-    message: 'Receiver not found',
-  });
-}
-
-const receiverId = receiver._id;
-  if (senderId.toString() === receiverId) {
+  if (!receiverEmail && !receiverPhone) {
     return res.status(400).json({
       success: false,
-      message: 'Cannot send message to yourself',
+      message: 'Receiver email or phone number is required',
     });
   }
 
   try {
-    // Determine content type and handle file upload
-    const { mediaUrl, contentType } = await processMessageContent(file, content, res);
+    const receiver = await findReceiver(receiverEmail, receiverPhone);
 
-    // If processMessageContent returned null, response was already sent
+    if (!receiver) {
+      return res.status(404).json({
+        success: false,
+        message: 'Receiver not found',
+      });
+    }
+
+    const receiverId = receiver._id;
+
+    if (senderId.toString() === receiverId.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot send message to yourself',
+      });
+    }
+
+    const { mediaUrl, contentType } = await processMessageContent(file, content, res);
     if (!contentType) return;
 
-    // Find or create conversation
     const conversation = await findOrCreateConversation(senderId, receiverId);
 
-    // Create the message
     const newMessage = new Message({
       conversationId: conversation._id,
       sender: senderId,
@@ -64,9 +55,8 @@ const receiverId = receiver._id;
 
     await newMessage.save();
 
-    // Update conversation with last message
+    // Only update lastMessage (no unreadCount)
     conversation.lastMessage = newMessage._id;
-    conversation.unreadCount += 1;
     await conversation.save();
 
     return res.status(201).json({
@@ -95,12 +85,80 @@ const receiverId = receiver._id;
 };
 
 // ================================
-// GET MESSAGES
+// GET ALL CONVERSATIONS
 // ================================
 
 /**
- * Get all messages for a specific conversation.
- * Requires authentication.
+ * Get all conversations for the logged-in user.
+ * Returns: other user's info, last message, and unread count.
+ */
+exports.getConversations = async (req, res) => {
+  const userId = req.user._id;
+
+  try {
+    const conversations = await Conversation.find({
+      participants: { $in: [userId] },
+    })
+      .populate('participants', 'username profilePicture isOnline lastSeen')
+      .populate({
+        path: 'lastMessage',
+        select: 'content contentType sender messageStatus createdAt',
+      })
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // Format each conversation with unread count
+    const formattedConversations = await Promise.all(
+      conversations.map(async (conversation) => {
+        // Get the other user (not me)
+        const otherUser = conversation.participants.find(
+          (p) => p._id.toString() !== userId.toString()
+        );
+
+        // Count unread messages sent TO me in this conversation
+        const unreadCount = await Message.countDocuments({
+          conversationId: conversation._id,
+          receiver: userId,
+          messageStatus: { $ne: 'read' },
+        });
+
+        return {
+          conversationId: conversation._id,
+          user: {
+            id: otherUser._id,
+            username: otherUser.username,
+            profilePicture: otherUser.profilePicture || null,
+            isOnline: otherUser.isOnline,
+            lastSeen: otherUser.lastSeen,
+          },
+          lastMessage: conversation.lastMessage || null,
+          unreadCount,
+          updatedAt: conversation.updatedAt,
+        };
+      })
+    );
+
+    return res.status(200).json({
+      success: true,
+      conversations: formattedConversations,
+    });
+  } catch (error) {
+    console.error('Error in getConversations:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get conversations',
+      error: error.message,
+    });
+  }
+};
+
+// ================================
+// GET MESSAGES (Auto marks as read)
+// ================================
+
+/**
+ * Get all messages for a conversation.
+ * Automatically marks messages as read.
  */
 exports.getMessages = async (req, res) => {
   const { conversationId } = req.params;
@@ -114,7 +172,6 @@ exports.getMessages = async (req, res) => {
   }
 
   try {
-    // Verify user is part of this conversation
     const conversation = await Conversation.findOne({
       _id: conversationId,
       participants: { $in: [userId] },
@@ -127,16 +184,24 @@ exports.getMessages = async (req, res) => {
       });
     }
 
-    // Get all messages for this conversation
+    // Get all messages
     const messages = await Message.find({ conversationId })
       .populate('sender', 'username profilePicture')
       .populate('receiver', 'username profilePicture')
-      .sort({ createdAt: 1 }) // Oldest first
+      .sort({ createdAt: 1 })
       .lean();
 
-    // Reset unread count since user is viewing the messages
-    conversation.unreadCount = 0;
-    await conversation.save();
+    // Auto mark as read — all messages sent TO me in this conversation
+    await Message.updateMany(
+      {
+        conversationId,
+        receiver: userId,
+        messageStatus: { $ne: 'read' },
+      },
+      {
+        $set: { messageStatus: 'read' },
+      }
+    );
 
     return res.status(200).json({
       success: true,
@@ -151,73 +216,11 @@ exports.getMessages = async (req, res) => {
     });
   }
 };
- // ================================
- // Mark all messages in a conversation as read.
- // Requires authentication.
- // ================================
-exports.markAsRead = async (req, res) => {
-  const userId = req.user._id;
-  const { conversationId } = req.params;
-
-  if (!conversationId) {
-    return res.status(400).json({
-      success: false,
-      message: 'Conversation ID is required',
-    });
-  }
-
-  try {
-    // Verify user is part of this conversation
-    const conversation = await Conversation.findOne({
-      _id: conversationId,
-      participants: { $in: [userId] },
-    });
-
-    if (!conversation) {
-      return res.status(404).json({
-        success: false,
-        message: 'Conversation not found',
-      });
-    }
-
-    // Mark all unread messages sent TO this user as "read"
-    await Message.updateMany(
-      {
-        conversationId,
-        receiver: userId,
-        messageStatus: { $ne: 'read' },
-      },
-      {
-        $set: { messageStatus: 'read' },
-      }
-    );
-
-    // Reset unread count
-    conversation.unreadCount = 0;
-    await conversation.save();
-
-    return res.status(200).json({
-      success: true,
-      message: 'Messages marked as read',
-    });
-  } catch (error) {
-    console.error('Error in markAsRead:', error);
-    return res.status(500).json({
-      success: false,
-      message: 'Failed to mark messages as read',
-      error: error.message,
-    });
-  }
-};
 
 // ================================
 // DELETE CONVERSATION
 // ================================
 
-/**
- * Delete a conversation and all its messages.
- * Requires authentication.
- */
 exports.deleteConversation = async (req, res) => {
   const userId = req.user._id;
   const { conversationId } = req.params;
@@ -230,7 +233,6 @@ exports.deleteConversation = async (req, res) => {
   }
 
   try {
-    // Verify user is part of this conversation
     const conversation = await Conversation.findOne({
       _id: conversationId,
       participants: { $in: [userId] },
@@ -243,10 +245,7 @@ exports.deleteConversation = async (req, res) => {
       });
     }
 
-    // Delete all messages in this conversation
     await Message.deleteMany({ conversationId });
-
-    // Delete the conversation
     await Conversation.findByIdAndDelete(conversationId);
 
     return res.status(200).json({
@@ -279,7 +278,6 @@ exports.deleteMessage = async (req, res) => {
   }
 
   try {
-    // Find the message
     const message = await Message.findById(messageId);
 
     if (!message) {
@@ -289,7 +287,6 @@ exports.deleteMessage = async (req, res) => {
       });
     }
 
-    // Only sender can delete their message
     if (message.sender.toString() !== userId.toString()) {
       return res.status(403).json({
         success: false,
@@ -299,10 +296,7 @@ exports.deleteMessage = async (req, res) => {
 
     const conversationId = message.conversationId;
 
-    // Delete the message
     await Message.findByIdAndDelete(messageId);
-
-    // Update conversation's lastMessage
     await updateLastMessage(conversationId);
 
     return res.status(200).json({
@@ -320,16 +314,10 @@ exports.deleteMessage = async (req, res) => {
 };
 
 // ================================
-// HELPER FUNCTIONs
+// HELPER FUNCTIONS
 // ================================
 
-/**
- * Update conversation's lastMessage after a message is deleted.
- * Sets it to the most recent remaining message, or null if no messages left.
- * @param {ObjectId} conversationId
- */
 async function updateLastMessage(conversationId) {
-  // Find the most recent remaining message
   const lastMessage = await Message.findOne({ conversationId })
     .sort({ createdAt: -1 })
     .lean();
@@ -339,19 +327,11 @@ async function updateLastMessage(conversationId) {
   });
 }
 
-/**
- * Process message content — handle file upload or text.
- * @param {Object} file - Multer file object (from req.file).
- * @param {string} content - Text content from req.body.
- * @param {Object} res - Express response (to send error if needed).
- * @returns {{ mediaUrl: string|null, contentType: string|null }}
- */
 async function processMessageContent(file, content, res) {
   let mediaUrl = null;
   let contentType = null;
 
   if (file) {
-    // ---- File Upload ----
     const uploadResult = await uploadToCloudinary(file.buffer, 'chat_media');
 
     if (!uploadResult?.secure_url) {
@@ -364,7 +344,6 @@ async function processMessageContent(file, content, res) {
 
     mediaUrl = uploadResult.secure_url;
 
-    // Detect content type from mimetype
     if (file.mimetype.startsWith('image')) {
       contentType = 'image';
     } else if (file.mimetype.startsWith('video')) {
@@ -377,10 +356,8 @@ async function processMessageContent(file, content, res) {
       return { mediaUrl: null, contentType: null };
     }
   } else if (content && content.trim()) {
-    // ---- Text Message ----
     contentType = 'text';
   } else {
-    // ---- No Content ----
     res.status(400).json({
       success: false,
       message: 'Message content is required (text, image, or video)',
@@ -391,12 +368,6 @@ async function processMessageContent(file, content, res) {
   return { mediaUrl, contentType };
 }
 
-/**
- * Find existing conversation or create a new one.
- * @param {ObjectId} senderId
- * @param {ObjectId} receiverId
- * @returns {Document} - Conversation document.
- */
 async function findOrCreateConversation(senderId, receiverId) {
   let conversation = await Conversation.findOne({
     participants: { $all: [senderId, receiverId] },
@@ -412,20 +383,12 @@ async function findOrCreateConversation(senderId, receiverId) {
   return conversation;
 }
 
-/**
- * Find receiver user by email or phone number.
- * @param {string} email
- * @param {string} phone
- * @returns {Document|null}
- */
 async function findReceiver(email, phone) {
   if (email) {
     return await User.findOne({ email: email.trim().toLowerCase() });
   }
-
   if (phone) {
     return await User.findOne({ phoneNumber: phone.trim() });
   }
-
   return null;
 }
