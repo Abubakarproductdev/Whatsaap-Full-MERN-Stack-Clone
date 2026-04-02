@@ -47,7 +47,8 @@ connectDB();
 // Routes
 const authRoutes = require('./routes/auth.routes');
 app.use('/api/auth', authRoutes);
-
+const chatRoutes = require('./routes/chat.routes');
+app.use('/api/chat', chatRoutes);
 
 
 // Start server
