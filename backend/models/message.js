@@ -9,7 +9,7 @@ const MessageSchema = new mongoose.Schema({
         ref: 'User'
     },
     receiver:{
-        type: moongoose.Schema.Types.ObjectId,
+        type: mongoose.Schema.Types.ObjectId,
         ref:'User'
     },
     content:{
@@ -21,7 +21,7 @@ const MessageSchema = new mongoose.Schema({
     },
     reactions:[
         {
-            user:{type:moongoose.Schema.Types.ObjectId, ref:'User'},
+            user:{type:mongoose.Schema.Types.ObjectId, ref:'User'},
             emoji:String
 
         }
