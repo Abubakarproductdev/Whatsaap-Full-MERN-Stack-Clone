@@ -267,12 +267,6 @@ exports.deleteConversation = async (req, res) => {
 // DELETE MESSAGE
 // ================================
 
-/**
- * Delete a single message from a conversation.
- * Only the sender can delete their message.
- * Updates lastMessage in conversation if needed.
- * Requires authentication.
- */
 exports.deleteMessage = async (req, res) => {
   const userId = req.user._id;
   const { messageId } = req.params;
