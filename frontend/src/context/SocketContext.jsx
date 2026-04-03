@@ -17,7 +17,6 @@ export function SocketProvider({ children }) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
-      setSocketReady(false);
       return;
     }
 
@@ -34,15 +33,12 @@ export function SocketProvider({ children }) {
 
     socket.on('disconnect', () => {
       setSocketReady(false);
-<<<<<<< HEAD
       setOnlineUsers({});
       setTypingUsers({});
     });
 
     socket.on('connect_error', () => {
       setSocketReady(false);
-=======
->>>>>>> d6692ac8fbd3af489ea1170b143daf6d53f0681e
     });
 
     socket.on('userOnlineStatus', ({ userId, isOnline, lastSeen }) => {
