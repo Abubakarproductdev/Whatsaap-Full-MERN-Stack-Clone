@@ -3,11 +3,9 @@ import MessageList from './MessageList';
 import MessageInput from './MessageInput';
 import EmptyChat from './EmptyChat';
 import { useChat } from '../../context/ChatContext';
-import { useAuth } from '../../context/AuthContext';
 
 export default function ChatWindow() {
-  const { activeConversation, messages, loadingMessages, sendMessage, setActiveConversation } = useChat();
-  const { user } = useAuth();
+  const { activeConversation, messages, loadingMessages, sendMessage, closeActiveConversation } = useChat();
 
   if (!activeConversation) {
     return <EmptyChat />;
@@ -28,7 +26,7 @@ export default function ChatWindow() {
     <div className="flex-1 flex flex-col h-full" id="chat-window">
       <ChatHeader
         conversation={activeConversation}
-        onBackClick={() => setActiveConversation(null)}
+        onBackClick={closeActiveConversation}
       />
       <MessageList messages={messages} loading={loadingMessages} />
       <MessageInput

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { IoArrowBack, IoSearch } from 'react-icons/io5';
 import { useChat } from '../../context/ChatContext';
 import Avatar from '../common/Avatar';
-import Spinner from '../common/Spinner';
 
 export default function NewChatPanel({ onClose }) {
   const { allUsers, startConversation } = useChat();

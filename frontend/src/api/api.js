@@ -16,10 +16,23 @@ async function request(endpoint, options = {}) {
   }
 
   const res = await fetch(url, config);
-  const data = await res.json();
+  const raw = await res.text();
+  let data = {};
+
+  if (raw) {
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      data = { message: raw };
+    }
+  }
 
   if (!res.ok) {
-    throw { status: res.status, ...data };
+    throw {
+      status: res.status,
+      message: data.message || 'Request failed',
+      ...data,
+    };
   }
 
   return data;

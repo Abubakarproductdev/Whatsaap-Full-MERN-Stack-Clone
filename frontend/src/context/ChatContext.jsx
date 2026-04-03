@@ -7,7 +7,7 @@ const ChatContext = createContext();
 
 export function ChatProvider({ children }) {
   const { isAuthenticated, user } = useAuth();
-  const { socket, joinConversation, leaveConversation, markAsRead } = useSocket();
+  const { getSocket, socketReady, joinConversation, leaveConversation, markAsRead } = useSocket();
 
   const [conversations, setConversations] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -17,6 +17,13 @@ export function ChatProvider({ children }) {
   const [loadingMessages, setLoadingMessages] = useState(false);
 
   const prevConvIdRef = useRef(null);
+
+  const leaveJoinedConversation = useCallback(() => {
+    if (prevConvIdRef.current) {
+      leaveConversation(prevConvIdRef.current);
+      prevConvIdRef.current = null;
+    }
+  }, [leaveConversation]);
 
   /* ---- Load conversations ---- */
   const fetchConversations = useCallback(async () => {
@@ -51,43 +58,46 @@ export function ChatProvider({ children }) {
   /* ---- Select conversation ---- */
   const selectConversation = useCallback(
     async (conversation) => {
-      // leave old room
-      if (prevConvIdRef.current) {
-        leaveConversation(prevConvIdRef.current);
-      }
+      leaveJoinedConversation();
 
       setActiveConversation(conversation);
       const convId = conversation.conversationId;
       prevConvIdRef.current = convId;
 
-      // join new room
-      joinConversation(convId);
-      markAsRead(convId);
+      if (convId) {
+        // join new room
+        joinConversation(convId);
+        markAsRead(convId);
 
-      // fetch messages
-      setLoadingMessages(true);
-      try {
-        const data = await chatAPI.getMessages(convId);
-        if (data.success) setMessages(data.messages || []);
-      } catch (e) {
-        console.error('Failed to load messages:', e);
-      } finally {
-        setLoadingMessages(false);
+        // fetch messages
+        setLoadingMessages(true);
+        try {
+          const data = await chatAPI.getMessages(convId);
+          if (data.success) setMessages(data.messages || []);
+        } catch (e) {
+          console.error('Failed to load messages:', e);
+        } finally {
+          setLoadingMessages(false);
+        }
+
+        // update unread count locally
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.conversationId === convId ? { ...c, unreadCount: 0 } : c
+          )
+        );
+      } else {
+        setMessages([]);
       }
-
-      // update unread count locally
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.conversationId === convId ? { ...c, unreadCount: 0 } : c
-        )
-      );
     },
-    [joinConversation, leaveConversation, markAsRead]
+    [joinConversation, leaveJoinedConversation, markAsRead]
   );
 
   /* ---- Start new conversation (from user list) ---- */
   const startConversation = useCallback(
     (otherUser) => {
+      leaveJoinedConversation();
+
       // check if conversation already exists
       const existing = conversations.find(
         (c) => c.user?.id === otherUser._id || c.user?.id === otherUser.id
@@ -98,7 +108,7 @@ export function ChatProvider({ children }) {
         return;
       }
 
-      // create virtual conversation
+      // create virtual conversation — include both email and phoneNumber
       const virtual = {
         conversationId: null,
         user: {
@@ -107,8 +117,8 @@ export function ChatProvider({ children }) {
           profilePicture: otherUser.profilePicture || null,
           isOnline: otherUser.isOnline,
           lastSeen: otherUser.lastSeen,
-          phoneNumber: otherUser.phoneNumber,
-          email: otherUser.email,
+          phoneNumber: otherUser.phoneNumber || null,
+          email: otherUser.email || null,
         },
         lastMessage: null,
         unreadCount: 0,
@@ -118,17 +128,52 @@ export function ChatProvider({ children }) {
       setActiveConversation(virtual);
       setMessages([]);
     },
-    [conversations, selectConversation]
+    [conversations, leaveJoinedConversation, selectConversation]
   );
+
+  const closeActiveConversation = useCallback(() => {
+    leaveJoinedConversation();
+    setActiveConversation(null);
+    setMessages([]);
+  }, [leaveJoinedConversation]);
 
   /* ---- Send message ---- */
   const sendMessage = useCallback(
     async ({ content, file, receiverEmail, receiverPhone }) => {
+      const activeUserId = activeConversation?.user?.id;
+      let fallbackUser = activeUserId
+        ? allUsers.find((entry) => (entry._id || entry.id) === activeUserId)
+        : null;
+
+      if (!fallbackUser && activeUserId) {
+        try {
+          const usersResponse = await authAPI.getAllUsers();
+          const fetchedUsers = usersResponse?.users || [];
+          if (usersResponse?.success) {
+            setAllUsers(fetchedUsers);
+          }
+          fallbackUser = fetchedUsers.find((entry) => (entry._id || entry.id) === activeUserId) || null;
+        } catch (error) {
+          console.error('Failed to resolve receiver details:', error);
+        }
+      }
+
+      const resolvedReceiverEmail = receiverEmail || fallbackUser?.email || activeConversation?.user?.email || '';
+      const resolvedReceiverPhone = receiverPhone || fallbackUser?.phoneNumber || activeConversation?.user?.phoneNumber || '';
+
+      if (!resolvedReceiverEmail && !resolvedReceiverPhone) {
+        throw {
+          status: 400,
+          success: false,
+          message: 'Receiver email or phone number is required',
+        };
+      }
+
       const formData = new FormData();
       if (content) formData.append('content', content);
       if (file) formData.append('file', file);
-      if (receiverEmail) formData.append('receiverEmail', receiverEmail);
-      if (receiverPhone) formData.append('receiverPhone', receiverPhone);
+      if (resolvedReceiverEmail) formData.append('receiverEmail', resolvedReceiverEmail);
+      if (resolvedReceiverPhone) formData.append('receiverPhone', resolvedReceiverPhone);
 
       try {
         const data = await chatAPI.sendMessage(formData);
@@ -165,7 +210,7 @@ export function ChatProvider({ children }) {
         throw e;
       }
     },
-    [user, activeConversation, joinConversation, fetchConversations]
+    [user, activeConversation, allUsers, joinConversation, fetchConversations]
   );
 
   /* ---- Delete message ---- */
@@ -194,20 +239,20 @@ export function ChatProvider({ children }) {
             prev.filter((c) => c.conversationId !== conversationId)
           );
           if (activeConversation?.conversationId === conversationId) {
-            setActiveConversation(null);
-            setMessages([]);
+            closeActiveConversation();
           }
         }
       } catch (e) {
         console.error('Failed to delete conversation:', e);
       }
     },
-    [activeConversation]
+    [activeConversation, closeActiveConversation]
   );
 
   /* ---- Socket listeners for real-time ---- */
   useEffect(() => {
-    if (!socket) return;
+    const socket = getSocket();
+    if (!socket || !socketReady) return;
 
     const handleNewMessage = ({ conversationId, message }) => {
       // if we're in this conversation, add message
@@ -246,8 +291,7 @@ export function ChatProvider({ children }) {
         prev.filter((c) => c.conversationId !== conversationId)
       );
       if (activeConversation?.conversationId === conversationId) {
-        setActiveConversation(null);
-        setMessages([]);
+        closeActiveConversation();
       }
     };
 
@@ -262,7 +306,7 @@ export function ChatProvider({ children }) {
       socket.off('messageDeleted', handleMessageDeleted);
       socket.off('conversationDeleted', handleConversationDeleted);
     };
-  }, [socket, activeConversation, user, markAsRead, fetchConversations]);
+  }, [getSocket, socketReady, activeConversation, user, markAsRead, fetchConversations, closeActiveConversation]);
 
   return (
     <ChatContext.Provider
@@ -278,6 +322,7 @@ export function ChatProvider({ children }) {
         sendMessage,
         deleteMessage,
         deleteConversation,
+        closeActiveConversation,
         fetchConversations,
         fetchAllUsers,
         setActiveConversation,

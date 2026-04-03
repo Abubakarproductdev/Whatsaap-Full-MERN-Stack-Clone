@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { IoSend, IoHappy, IoClose } from 'react-icons/io5';
 import { ImAttachment } from 'react-icons/im';
 import { BsImageFill, BsCameraVideoFill } from 'react-icons/bs';
@@ -44,6 +44,9 @@ export default function MessageInput({ onSend, conversation }) {
     setFile(null);
     setPreview(null);
     setShowEmoji(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     inputRef.current?.focus();
   };
 
@@ -58,6 +61,10 @@ export default function MessageInput({ onSend, conversation }) {
     const selected = e.target.files?.[0];
     if (!selected) return;
 
+    if (preview?.url) {
+      URL.revokeObjectURL(preview.url);
+    }
+
     setFile(selected);
     setShowAttach(false);
 
@@ -71,12 +78,24 @@ export default function MessageInput({ onSend, conversation }) {
     setFile(null);
     if (preview?.url) URL.revokeObjectURL(preview.url);
     setPreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   const onEmojiClick = (emojiData) => {
     setText((prev) => prev + emojiData.emoji);
     inputRef.current?.focus();
   };
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(typingTimeoutRef.current);
+      if (preview?.url) {
+        URL.revokeObjectURL(preview.url);
+      }
+    };
+  }, [preview]);
 
   return (
     <div className="relative">
@@ -141,7 +160,11 @@ export default function MessageInput({ onSend, conversation }) {
           {showAttach && (
             <div className="absolute bottom-full left-0 mb-2 flex flex-col gap-2 animate-scale-in">
               <button
-                onClick={() => { fileInputRef.current.accept = 'image/*'; fileInputRef.current.click(); }}
+                onClick={() => {
+                  if (!fileInputRef.current) return;
+                  fileInputRef.current.accept = 'image/*';
+                  fileInputRef.current.click();
+                }}
                 className="w-12 h-12 rounded-full bg-purple-500 flex items-center justify-center shadow-lg
                   hover:scale-110 transition-transform cursor-pointer"
                 title="Photo"
@@ -149,7 +172,11 @@ export default function MessageInput({ onSend, conversation }) {
                 <BsImageFill className="text-white" size={20} />
               </button>
               <button
-                onClick={() => { fileInputRef.current.accept = 'video/*'; fileInputRef.current.click(); }}
+                onClick={() => {
+                  if (!fileInputRef.current) return;
+                  fileInputRef.current.accept = 'video/*';
+                  fileInputRef.current.click();
+                }}
                 className="w-12 h-12 rounded-full bg-red-500 flex items-center justify-center shadow-lg
                   hover:scale-110 transition-transform cursor-pointer"
                 title="Video"

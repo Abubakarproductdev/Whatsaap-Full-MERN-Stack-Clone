@@ -2,7 +2,7 @@ import Avatar from '../common/Avatar';
 import { useSocket } from '../../context/SocketContext';
 import { useChat } from '../../context/ChatContext';
 import { formatLastSeen } from '../../utils/formatters';
-import { IoSearch, IoArrowBack } from 'react-icons/io5';
+import { IoArrowBack } from 'react-icons/io5';
 import { HiOutlineDotsVertical } from 'react-icons/hi';
 import { useState, useRef, useEffect } from 'react';
 

@@ -1,10 +1,9 @@
 const express = require('express');
-const http = require('http');
 require('dotenv').config();
 const connectDB = require('./config/dbconfig');
 const cookieParser = require('cookie-parser');
 const { initSocket } = require('./services/socket');
-
+const http = require('http');
 const app = express();
 const PORT = process.env.PORT || 5000;
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -13,7 +12,8 @@ const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://127.0.0.1:3000'
 ];
-
+const server = http.createServer(app);
+initSocket(server);
 const allowedOrigins = (
   process.env.CLIENT_URLS
     ? process.env.CLIENT_URLS.split(',').map((origin) => origin.trim()).filter(Boolean)
@@ -53,13 +53,9 @@ const chatRoutes = require('./routes/chat.routes');
 app.use('/api/chat', chatRoutes);
 
 
-// Create HTTP server and mount Socket.IO
-const server = http.createServer(app);
-initSocket(server);
-
-// Start server
+// Start HTTP server with Socket.IO attached
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-module.exports = { app, server };
+module.exports = app;
