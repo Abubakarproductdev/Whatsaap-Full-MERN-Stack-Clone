@@ -306,7 +306,11 @@ export function ChatProvider({ children }) {
       socket.off('messageDeleted', handleMessageDeleted);
       socket.off('conversationDeleted', handleConversationDeleted);
     };
+<<<<<<< HEAD
   }, [getSocket, socketReady, activeConversation, user, markAsRead, fetchConversations, closeActiveConversation]);
+=======
+  }, [getSocket, socketReady, activeConversation, user, markAsRead, fetchConversations]);
+>>>>>>> d6692ac8fbd3af489ea1170b143daf6d53f0681e
 
   return (
     <ChatContext.Provider
