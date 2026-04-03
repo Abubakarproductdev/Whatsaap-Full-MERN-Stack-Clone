@@ -1,1 +1,162 @@
 @import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* WhatsApp Brand Colors */
+  --color-wa-green: #00a884;
+  --color-wa-green-hover: #06cf9c;
+  --color-wa-green-dark: #005c4b;
+  --color-wa-teal: #008069;
+  --color-wa-teal-dark: #00a884;
+
+  /* Dark Mode Colors */
+  --color-wa-d-bg: #111b21;
+  --color-wa-d-bg-deeper: #0b141a;
+  --color-wa-d-panel: #202c33;
+  --color-wa-d-header: #202c33;
+  --color-wa-d-hover: #2a3942;
+  --color-wa-d-active: #2a3942;
+  --color-wa-d-border: #313d45;
+  --color-wa-d-search: #2a3942;
+  --color-wa-d-input: #2a3942;
+  --color-wa-d-bubble-out: #005c4b;
+  --color-wa-d-bubble-in: #202c33;
+  --color-wa-d-text: #e9edef;
+  --color-wa-d-text-secondary: #8696a0;
+  --color-wa-d-icon: #aebac1;
+
+  /* Light Mode Colors */
+  --color-wa-l-bg: #f0f2f5;
+  --color-wa-l-bg-deeper: #efeae2;
+  --color-wa-l-panel: #ffffff;
+  --color-wa-l-header: #f0f2f5;
+  --color-wa-l-hover: #f5f6f6;
+  --color-wa-l-active: #f0f2f5;
+  --color-wa-l-border: #e9edef;
+  --color-wa-l-search: #f0f2f5;
+  --color-wa-l-input: #ffffff;
+  --color-wa-l-bubble-out: #d9fdd3;
+  --color-wa-l-bubble-in: #ffffff;
+  --color-wa-l-text: #111b21;
+  --color-wa-l-text-secondary: #667781;
+  --color-wa-l-icon: #54656f;
+}
+
+/* ========== Global Resets ========== */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ========== Scrollbar ========== */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(134, 150, 160, 0.35);
+  border-radius: 50px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(134, 150, 160, 0.55);
+}
+
+/* ========== Chat Wallpaper Pattern ========== */
+.chat-wallpaper {
+  position: relative;
+}
+
+.chat-wallpaper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%239C92AC' fill-opacity='0.6'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* ========== Animations ========== */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-dot {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { transform: scale(0.95); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.animate-slide-left { animation: slideInLeft 0.25s ease-out; }
+.animate-slide-right { animation: slideInRight 0.25s ease-out; }
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+.animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+.animate-scale-in { animation: scaleIn 0.2s ease-out; }
+
+/* Typing indicator dots */
+.typing-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  animation: pulse-dot 1.4s infinite ease-in-out both;
+}
+.typing-dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-dot:nth-child(2) { animation-delay: -0.16s; }
+.typing-dot:nth-child(3) { animation-delay: 0s; }
+
+/* ========== Emoji Picker Override ========== */
+.dark .EmojiPickerReact {
+  --epr-bg-color: #202c33 !important;
+  --epr-category-label-bg-color: #202c33 !important;
+  --epr-text-color: #e9edef !important;
+  --epr-hover-bg-color: #2a3942 !important;
+  --epr-search-input-bg-color: #2a3942 !important;
+  --epr-search-border-color: #313d45 !important;
+  border: 1px solid #313d45 !important;
+}
+
+/* ========== Message tick animations ========== */
+.tick-sent { color: #8696a0; }
+.tick-delivered { color: #8696a0; }
+.tick-read { color: #53bdeb; }
