@@ -2,16 +2,29 @@ const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const cookie = require('cookie');
 const User = require('../models/User');
-const Conversation = require('../models/Conversation');
+const Conversation = require('../models/conversation');
 const Message = require('../models/message');
 
 let io;
-const onlineUsers = new Map(); // userId -> socketId
+const onlineUsers = new Map(); // userId -> Set<socketId>
+
+const DEFAULT_ALLOWED_ORIGINS = [
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+];
 
 const initSocket = (server) => {
+  const allowedOrigins = (
+    process.env.CLIENT_URLS
+      ? process.env.CLIENT_URLS.split(',').map((o) => o.trim()).filter(Boolean)
+      : DEFAULT_ALLOWED_ORIGINS
+  );
+
   io = new Server(server, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      origin: allowedOrigins,
       credentials: true,
     },
   });
@@ -24,14 +37,15 @@ const initSocket = (server) => {
       }
 
       const cookies = cookie.parse(cookieHeader);
-      const token = cookies.token;
+      const token = cookies.auth_token || cookies.token;
 
       if (!token) {
         return next(new Error('Authentication error: No token found'));
       }
 
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      const user = await User.findById(decoded.id);
+      const userId = decoded.id || decoded.userId;
+      const user = await User.findById(userId);
 
       if (!user) {
         return next(new Error('Authentication error: User not found'));
@@ -50,7 +64,12 @@ const initSocket = (server) => {
 
   io.on('connection', async (socket) => {
     const userId = socket.user._id;
-    onlineUsers.set(userId, socket.id);
+
+    // Multi-session: add this socket to the user's set
+    if (!onlineUsers.has(userId)) {
+      onlineUsers.set(userId, new Set());
+    }
+    onlineUsers.get(userId).add(socket.id);
 
     await User.findByIdAndUpdate(userId, {
       isOnline: true,
@@ -62,8 +81,19 @@ const initSocket = (server) => {
       isOnline: true,
     });
 
-    socket.on('joinConversation', (conversationId) => {
-      socket.join(conversationId);
+    // Room authorization: only join if user is a participant
+    socket.on('joinConversation', async (conversationId) => {
+      try {
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          participants: { $in: [userId] },
+        });
+        if (conversation) {
+          socket.join(conversationId);
+        }
+      } catch (error) {
+        console.error('joinConversation auth error:', error);
+      }
     });
 
     socket.on('leaveConversation', (conversationId) => {
@@ -71,27 +101,39 @@ const initSocket = (server) => {
     });
 
     socket.on('typing', ({ conversationId, receiverId }) => {
-      const receiverSocketId = onlineUsers.get(receiverId);
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('typing', {
-          conversationId,
-          userId,
-        });
+      const receiverSockets = onlineUsers.get(receiverId);
+      if (receiverSockets) {
+        for (const sid of receiverSockets) {
+          io.to(sid).emit('typing', {
+            conversationId,
+            userId,
+          });
+        }
       }
     });
 
     socket.on('stopTyping', ({ conversationId, receiverId }) => {
-      const receiverSocketId = onlineUsers.get(receiverId);
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit('stopTyping', {
-          conversationId,
-          userId,
-        });
+      const receiverSockets = onlineUsers.get(receiverId);
+      if (receiverSockets) {
+        for (const sid of receiverSockets) {
+          io.to(sid).emit('stopTyping', {
+            conversationId,
+            userId,
+          });
+        }
       }
     });
 
+    // Authorization check: only mark as read if user belongs to conversation
     socket.on('markMessagesAsRead', async ({ conversationId }) => {
       try {
+        const conversation = await Conversation.findOne({
+          _id: conversationId,
+          participants: { $in: [userId] },
+        });
+
+        if (!conversation) return;
+
         await Message.updateMany(
           {
             conversationId,
@@ -103,31 +145,35 @@ const initSocket = (server) => {
           }
         );
 
-        const conversation = await Conversation.findById(conversationId);
-        if (conversation) {
-          io.to(conversationId).emit('messagesRead', {
-            conversationId,
-            readBy: userId,
-          });
-        }
+        io.to(conversationId).emit('messagesRead', {
+          conversationId,
+          readBy: userId,
+        });
       } catch (error) {
         console.error('Socket markMessagesAsRead error:', error);
       }
     });
 
+    // Multi-session disconnect: only mark offline when last socket gone
     socket.on('disconnect', async () => {
-      onlineUsers.delete(userId);
+      const sockets = onlineUsers.get(userId);
+      if (sockets) {
+        sockets.delete(socket.id);
+        if (sockets.size === 0) {
+          onlineUsers.delete(userId);
 
-      await User.findByIdAndUpdate(userId, {
-        isOnline: false,
-        lastSeen: new Date(),
-      });
+          await User.findByIdAndUpdate(userId, {
+            isOnline: false,
+            lastSeen: new Date(),
+          });
 
-      io.emit('userOnlineStatus', {
-        userId,
-        isOnline: false,
-        lastSeen: new Date(),
-      });
+          io.emit('userOnlineStatus', {
+            userId,
+            isOnline: false,
+            lastSeen: new Date(),
+          });
+        }
+      }
     });
   });
 
@@ -142,11 +188,21 @@ const getIO = () => {
 };
 
 const getReceiverSocketId = (userId) => {
-  return onlineUsers.get(userId.toString());
+  const sockets = onlineUsers.get(userId.toString());
+  if (sockets && sockets.size > 0) {
+    return [...sockets][0]; // Return first socket for delivery
+  }
+  return undefined;
+};
+
+const getReceiverSocketIds = (userId) => {
+  const sockets = onlineUsers.get(userId.toString());
+  return sockets ? [...sockets] : [];
 };
 
 module.exports = {
   initSocket,
   getIO,
   getReceiverSocketId,
-};
+  getReceiverSocketIds,
+};

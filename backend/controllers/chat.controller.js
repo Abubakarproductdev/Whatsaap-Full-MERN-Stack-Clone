@@ -1,4 +1,4 @@
-const Conversation = require('../models/Conversation');
+const Conversation = require('../models/conversation');
 const Message = require('../models/message');
 const { uploadToCloudinary } = require('../config/cloudinaryConfig');
 const User = require('../models/User');
@@ -50,7 +50,7 @@ exports.sendMessage = async (req, res) => {
       sender: senderId,
       receiver: receiverId,
       content: contentType === 'text' ? content.trim() : '',
-      imageOrVideoUrl: mediaUrl,
+      ImageOrVideoUrl: mediaUrl,
       contentType,
       messageStatus: receiverSocketId ? 'delivered' : 'sent',
     });
@@ -88,7 +88,7 @@ exports.sendMessage = async (req, res) => {
         sender: newMessage.sender,
         receiver: newMessage.receiver,
         content: newMessage.content,
-        imageOrVideoUrl: newMessage.imageOrVideoUrl,
+        imageOrVideoUrl: newMessage.ImageOrVideoUrl,
         contentType: newMessage.contentType,
         messageStatus: newMessage.messageStatus,
         createdAt: newMessage.createdAt,
@@ -122,7 +122,7 @@ exports.getConversations = async (req, res) => {
       .populate('participants', 'username profilePicture isOnline lastSeen')
       .populate({
         path: 'lastMessage',
-        select: 'content contentType sender receiver messageStatus createdAt imageOrVideoUrl',
+        select: 'content contentType sender receiver messageStatus createdAt ImageOrVideoUrl',
       })
       .sort({ updatedAt: -1 })
       .lean();

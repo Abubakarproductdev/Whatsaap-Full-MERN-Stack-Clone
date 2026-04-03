@@ -20,6 +20,7 @@ function getCookieOptions() {
 function setAuthCookies(res, token) {
   const cookieOptions = getCookieOptions();
   res.cookie('auth_token', token, cookieOptions);
+  res.cookie('token', token, cookieOptions);
 }
 
 // ================================
@@ -204,12 +205,17 @@ async function verifyByMethod(method, identifier, code) {
 
     const twilioStatus = await otpService.verifyOtpTwilioService(phoneNumber, code);
 
-    if (twilioStatus !== null) {
+    if (twilioStatus === true) {
       user = await User.findOne({ phoneNumber });
       if (!user) {
         user = new User({ phoneNumber });
       }
       return user;
+    }
+
+    // If Twilio Verify returned false, the OTP was wrong
+    if (twilioStatus === false) {
+      return null;
     }
 
     user = await User.findOne({ phoneNumber });

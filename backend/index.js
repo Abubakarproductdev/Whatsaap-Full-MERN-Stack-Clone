@@ -1,7 +1,9 @@
 const express = require('express');
+const http = require('http');
 require('dotenv').config();
 const connectDB = require('./config/dbconfig');
 const cookieParser = require('cookie-parser');
+const { initSocket } = require('./services/socket');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -51,9 +53,13 @@ const chatRoutes = require('./routes/chat.routes');
 app.use('/api/chat', chatRoutes);
 
 
+// Create HTTP server and mount Socket.IO
+const server = http.createServer(app);
+initSocket(server);
+
 // Start server
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
 
-module.exports = app;
+module.exports = { app, server };

@@ -1,6 +1,6 @@
 const User = require('../models/User');
 const { cloudinary, uploadToCloudinary } = require('../config/cloudinaryConfig');
-const Conversation = require('../models/Conversation');
+const Conversation = require('../models/conversation');
 
 function getCookieOptions() {
   return {
@@ -133,7 +133,7 @@ exports.getAllUsers = async (req, res) => {
   try {
     // Get all users except the logged-in user
     const users = await User.find({ _id: { $ne: loggedInUser } })
-      .select('username profilePicture lastSeen isOnline about phoneNumber')
+      .select('username profilePicture lastSeen isOnline about phoneNumber email')
       .lean();
 
     // For each user, find their conversation with the logged-in user
