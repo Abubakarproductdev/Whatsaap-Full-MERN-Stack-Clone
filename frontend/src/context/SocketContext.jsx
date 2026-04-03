@@ -7,6 +7,7 @@ const SocketContext = createContext();
 export function SocketProvider({ children }) {
   const { isAuthenticated } = useAuth();
   const socketRef = useRef(null);
+  const [socketReady, setSocketReady] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [typingUsers, setTypingUsers] = useState({});
 
@@ -16,6 +17,7 @@ export function SocketProvider({ children }) {
         socketRef.current.disconnect();
         socketRef.current = null;
       }
+      setSocketReady(false);
       return;
     }
 
@@ -25,6 +27,14 @@ export function SocketProvider({ children }) {
     });
 
     socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setSocketReady(true);
+    });
+
+    socket.on('disconnect', () => {
+      setSocketReady(false);
+    });
 
     socket.on('userOnlineStatus', ({ userId, isOnline, lastSeen }) => {
       setOnlineUsers((prev) => ({
@@ -48,9 +58,11 @@ export function SocketProvider({ children }) {
     return () => {
       socket.disconnect();
       socketRef.current = null;
+      setSocketReady(false);
     };
   }, [isAuthenticated]);
 
+  // Stable callbacks that access socketRef.current at call time (not stale closure)
   const joinConversation = useCallback((conversationId) => {
     socketRef.current?.emit('joinConversation', conversationId);
   }, []);
@@ -71,10 +83,14 @@ export function SocketProvider({ children }) {
     socketRef.current?.emit('markMessagesAsRead', { conversationId });
   }, []);
 
+  // Expose a stable getSocket function instead of the raw ref
+  const getSocket = useCallback(() => socketRef.current, []);
+
   return (
     <SocketContext.Provider
       value={{
-        socket: socketRef.current,
+        getSocket,
+        socketReady,
         onlineUsers,
         typingUsers,
         joinConversation,

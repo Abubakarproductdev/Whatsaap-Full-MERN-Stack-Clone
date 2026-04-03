@@ -7,7 +7,7 @@ const ChatContext = createContext();
 
 export function ChatProvider({ children }) {
   const { isAuthenticated, user } = useAuth();
-  const { socket, joinConversation, leaveConversation, markAsRead } = useSocket();
+  const { getSocket, socketReady, joinConversation, leaveConversation, markAsRead } = useSocket();
 
   const [conversations, setConversations] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
@@ -60,27 +60,31 @@ export function ChatProvider({ children }) {
       const convId = conversation.conversationId;
       prevConvIdRef.current = convId;
 
-      // join new room
-      joinConversation(convId);
-      markAsRead(convId);
+      if (convId) {
+        // join new room
+        joinConversation(convId);
+        markAsRead(convId);
 
-      // fetch messages
-      setLoadingMessages(true);
-      try {
-        const data = await chatAPI.getMessages(convId);
-        if (data.success) setMessages(data.messages || []);
-      } catch (e) {
-        console.error('Failed to load messages:', e);
-      } finally {
-        setLoadingMessages(false);
+        // fetch messages
+        setLoadingMessages(true);
+        try {
+          const data = await chatAPI.getMessages(convId);
+          if (data.success) setMessages(data.messages || []);
+        } catch (e) {
+          console.error('Failed to load messages:', e);
+        } finally {
+          setLoadingMessages(false);
+        }
+
+        // update unread count locally
+        setConversations((prev) =>
+          prev.map((c) =>
+            c.conversationId === convId ? { ...c, unreadCount: 0 } : c
+          )
+        );
+      } else {
+        setMessages([]);
       }
-
-      // update unread count locally
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.conversationId === convId ? { ...c, unreadCount: 0 } : c
-        )
-      );
     },
     [joinConversation, leaveConversation, markAsRead]
   );
@@ -98,7 +102,7 @@ export function ChatProvider({ children }) {
         return;
       }
 
-      // create virtual conversation
+      // create virtual conversation — include both email and phoneNumber
       const virtual = {
         conversationId: null,
         user: {
@@ -107,8 +111,8 @@ export function ChatProvider({ children }) {
           profilePicture: otherUser.profilePicture || null,
           isOnline: otherUser.isOnline,
           lastSeen: otherUser.lastSeen,
-          phoneNumber: otherUser.phoneNumber,
-          email: otherUser.email,
+          phoneNumber: otherUser.phoneNumber || null,
+          email: otherUser.email || null,
         },
         lastMessage: null,
         unreadCount: 0,
@@ -207,7 +211,8 @@ export function ChatProvider({ children }) {
 
   /* ---- Socket listeners for real-time ---- */
   useEffect(() => {
-    if (!socket) return;
+    const socket = getSocket();
+    if (!socket || !socketReady) return;
 
     const handleNewMessage = ({ conversationId, message }) => {
       // if we're in this conversation, add message
@@ -262,7 +267,7 @@ export function ChatProvider({ children }) {
       socket.off('messageDeleted', handleMessageDeleted);
       socket.off('conversationDeleted', handleConversationDeleted);
     };
-  }, [socket, activeConversation, user, markAsRead, fetchConversations]);
+  }, [getSocket, socketReady, activeConversation, user, markAsRead, fetchConversations]);
 
   return (
     <ChatContext.Provider
