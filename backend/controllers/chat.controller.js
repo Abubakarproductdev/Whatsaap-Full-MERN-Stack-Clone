@@ -2,6 +2,7 @@ const Conversation = require('../models/Conversation');
 const Message = require('../models/message');
 const { uploadToCloudinary } = require('../config/cloudinaryConfig');
 const User = require('../models/User');
+const { getIO, getReceiverSocketId } = require('../services/socket');
 
 // ================================
 // SEND MESSAGE
@@ -42,6 +43,7 @@ exports.sendMessage = async (req, res) => {
     if (!contentType) return;
 
     const conversation = await findOrCreateConversation(senderId, receiverId);
+    const receiverSocketId = getReceiverSocketId(receiverId);
 
     const newMessage = new Message({
       conversationId: conversation._id,
@@ -50,14 +52,32 @@ exports.sendMessage = async (req, res) => {
       content: contentType === 'text' ? content.trim() : '',
       imageOrVideoUrl: mediaUrl,
       contentType,
-      messageStatus: 'sent',
+      messageStatus: receiverSocketId ? 'delivered' : 'sent',
     });
 
     await newMessage.save();
 
-    // Only update lastMessage (no unreadCount)
     conversation.lastMessage = newMessage._id;
     await conversation.save();
+
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate('sender', 'username profilePicture')
+      .populate('receiver', 'username profilePicture')
+      .lean();
+
+    const io = getIO();
+
+    io.to(conversation._id.toString()).emit('newMessage', {
+      conversationId: conversation._id,
+      message: populatedMessage,
+    });
+
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit('newMessage', {
+        conversationId: conversation._id,
+        message: populatedMessage,
+      });
+    }
 
     return res.status(201).json({
       success: true,
@@ -102,20 +122,17 @@ exports.getConversations = async (req, res) => {
       .populate('participants', 'username profilePicture isOnline lastSeen')
       .populate({
         path: 'lastMessage',
-        select: 'content contentType sender messageStatus createdAt',
+        select: 'content contentType sender receiver messageStatus createdAt imageOrVideoUrl',
       })
       .sort({ updatedAt: -1 })
       .lean();
 
-    // Format each conversation with unread count
     const formattedConversations = await Promise.all(
       conversations.map(async (conversation) => {
-        // Get the other user (not me)
         const otherUser = conversation.participants.find(
           (p) => p._id.toString() !== userId.toString()
         );
 
-        // Count unread messages sent TO me in this conversation
         const unreadCount = await Message.countDocuments({
           conversationId: conversation._id,
           receiver: userId,
@@ -184,14 +201,12 @@ exports.getMessages = async (req, res) => {
       });
     }
 
-    // Get all messages
     const messages = await Message.find({ conversationId })
       .populate('sender', 'username profilePicture')
       .populate('receiver', 'username profilePicture')
       .sort({ createdAt: 1 })
       .lean();
 
-    // Auto mark as read — all messages sent TO me in this conversation
     await Message.updateMany(
       {
         conversationId,
@@ -202,6 +217,12 @@ exports.getMessages = async (req, res) => {
         $set: { messageStatus: 'read' },
       }
     );
+
+    const io = getIO();
+    io.to(conversationId.toString()).emit('messagesRead', {
+      conversationId,
+      readBy: userId,
+    });
 
     return res.status(200).json({
       success: true,
@@ -247,6 +268,11 @@ exports.deleteConversation = async (req, res) => {
 
     await Message.deleteMany({ conversationId });
     await Conversation.findByIdAndDelete(conversationId);
+
+    const io = getIO();
+    io.to(conversationId.toString()).emit('conversationDeleted', {
+      conversationId,
+    });
 
     return res.status(200).json({
       success: true,
@@ -298,6 +324,12 @@ exports.deleteMessage = async (req, res) => {
 
     await Message.findByIdAndDelete(messageId);
     await updateLastMessage(conversationId);
+
+    const io = getIO();
+    io.to(conversationId.toString()).emit('messageDeleted', {
+      conversationId,
+      messageId,
+    });
 
     return res.status(200).json({
       success: true,
