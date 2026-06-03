@@ -4,7 +4,7 @@ const emailService = require('../services/email.service');
 const { generateOTP, buildFullPhoneNumber, isValidEmail } = require('../utils/otpgeneration');
 const generateWebToken = require('../utils/genrateWebtoken');
 
-const OTP_EXPIRY_DURATION = 10 * 60 * 1000; // 10 minutes
+const OTP_EXPIRY_DURATION = 10 * 70 * 1000; // 10 minutes
 const COOKIE_MAX_AGE = 365 * 24 * 60 * 60 * 1000; // 1 year
 
 function getCookieOptions() {
